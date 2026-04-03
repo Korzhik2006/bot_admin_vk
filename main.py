@@ -11,7 +11,9 @@ vk = vk_session.get_api()
 longpoll = VkLongPoll(vk_session)
 
 def send_msg(user_id, text, kb=None):
-    vk.messages.send(user_id=user_id, message=text, random_id=get_random_id(), keyboard=kb)
+    params = {'user_id': user_id, 'message': text, 'random_id': get_random_id()}
+    if kb: params['keyboard'] = kb
+    vk.messages.send(**params)
 
 print("Бот Оптика Экспресс запущен!")
 
@@ -21,7 +23,6 @@ for event in longpoll.listen():
         msg_l = msg.lower()
         database.add_user(user_id)
 
-        # 1. Навигация
         if msg_l in ["начать", "привет", "меню", "назад"]:
             send_msg(user_id, "Выберите действие в меню:", keyboards.main_menu())
 
@@ -29,40 +30,44 @@ for event in longpoll.listen():
             info = "👓 Оптика Экспресс\n📍 Измайловский пр., д. 7\n⏰ 10:00 - 20:00"
             send_msg(user_id, info, keyboards.main_menu())
 
-        # 2. Логика записи
         elif msg_l == "записаться на прием":
             send_msg(user_id, "На какой день вы хотите записаться?", keyboards.date_selection())
 
         elif msg_l.startswith("дата: "):
             date_val = msg.split(": ")[1]
-            database.set_user_last_date(user_id, date_val) # Запоминаем дату в БД
-            send_msg(user_id, f"Выберите время на {date_val}:", keyboards.time_slots())
+            database.set_user_last_date(user_id, date_val)
+            # Получаем список занятых слотов из базы
+            booked = database.get_booked_slots(date_val)
+            send_msg(user_id, f"Свободное время на {date_val} (синие кнопки):", keyboards.time_slots(booked))
 
-        # Проверка: если ввели время (формат ЧЧ:ММ)
         elif re.match(r'^\d{2}:\d{2}$', msg):
             saved_date = database.get_user_last_date(user_id)
             if not saved_date:
                 send_msg(user_id, "Сначала выберите дату!", keyboards.date_selection())
                 continue
             
-            full_date_time = f"{saved_date} в {msg}"
-            if database.create_appointment(user_id, full_date_time):
-                send_msg(user_id, f"✅ Записано: {full_date_time}!\nИзмайловский пр., д. 7", keyboards.main_menu())
+            full_dt = f"{saved_date} в {msg}"
+            if database.create_appointment(user_id, full_dt):
+                send_msg(user_id, f"✅ Записано: {full_dt}!\nИзмайловский пр., д. 7", keyboards.main_menu())
                 if ADMIN_ID:
-                    send_msg(ADMIN_ID, f"🔔 Запись: ://vk.com{user_id} на {full_date_time}")
+                    send_msg(ADMIN_ID, f"🔔 Запись: ://vk.com{user_id} на {full_dt}")
             else:
-                send_msg(user_id, "❌ Это время уже занято.", keyboards.time_slots())
+                send_msg(user_id, "❌ Это время уже занято.", keyboards.main_menu())
 
-        # 3. Заказы
+        # Обработка нажатия на занятое время (в скобках)
+        elif re.match(r'^\(\d{2}:\d{2}\)$', msg):
+            send_msg(user_id, "Это время уже занято, выберите синюю кнопку.")
+
         elif msg_l == "статус заказа":
             send_msg(user_id, "Введите номер вашего заказа:")
 
         elif msg_l.startswith("заказ ") and user_id == ADMIN_ID:
             try:
                 p = msg.split()
-                database.update_order_status(p[1], " ".join(p[2:]))
-                send_msg(ADMIN_ID, f"✅ Статус заказа №{p[1]} обновлен.")
-            except: send_msg(ADMIN_ID, "Ошибка! Формат: заказ 1234 готово")
+                num, st = p[1], " ".join(p[2:])
+                database.update_order_status(num, st)
+                send_msg(ADMIN_ID, f"✅ Заказ №{num} обновлен: {st}")
+            except: send_msg(ADMIN_ID, "Формат: заказ 123 готово")
 
         elif msg.isdigit():
             status = database.get_order_status(msg)

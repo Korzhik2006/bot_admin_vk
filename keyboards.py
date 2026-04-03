@@ -19,18 +19,28 @@ def date_selection():
     kb.add_button("Назад", color=VkKeyboardColor.NEGATIVE)
     return kb.get_keyboard()
 
-def time_slots():
+def time_slots(booked_times):
     kb = VkKeyboard(one_time=True)
-    start, end = datetime.strptime("10:00", "%H:%M"), datetime.strptime("19:30", "%H:%M")
+    start = datetime.strptime("10:00", "%H:%M")
+    end = datetime.strptime("19:30", "%H:%M")
     current = start
     count = 0
+    
     while current <= end:
         time_str = current.strftime("%H:%M")
-        # ТЕПЕРЬ ТУТ ТОЛЬКО ВРЕМЯ
-        kb.add_button(time_str, color=VkKeyboardColor.POSITIVE)
+        
+        if time_str in booked_times:
+            # Если время занято — кнопка белая (SECONDARY) и текст с пометкой
+            kb.add_button(f"({time_str})", color=VkKeyboardColor.SECONDARY)
+        else:
+            # Если свободно — синяя (PRIMARY)
+            kb.add_button(time_str, color=VkKeyboardColor.PRIMARY)
+            
         count += 1
-        if count % 4 == 0 and current < end: kb.add_line()
+        if count % 4 == 0 and current < end:
+            kb.add_line()
         current += timedelta(minutes=30)
+        
     kb.add_line()
     kb.add_button("Назад", color=VkKeyboardColor.NEGATIVE)
     return kb.get_keyboard()

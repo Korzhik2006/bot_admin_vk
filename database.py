@@ -8,6 +8,10 @@ def init_db():
         cursor.execute('CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, last_date TEXT)')
         cursor.execute('CREATE TABLE IF NOT EXISTS appointments (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, date_time TEXT UNIQUE)')
         cursor.execute('CREATE TABLE IF NOT EXISTS orders (order_id TEXT PRIMARY KEY, status TEXT)')
+        try:
+            cursor.execute('ALTER TABLE users ADD COLUMN last_date TEXT')
+        except sqlite3.OperationalError:
+            pass
         conn.commit()
 
 def add_user(user_id):
@@ -21,7 +25,15 @@ def set_user_last_date(user_id, date_str):
 def get_user_last_date(user_id):
     with sqlite3.connect(DATABASE) as conn:
         res = conn.execute("SELECT last_date FROM users WHERE user_id = ?", (user_id,)).fetchone()
-        return res[0] if res else None
+        return res[0] if res and res[0] else None
+
+def get_booked_slots(date_str):
+    """Возвращает список забронированных времен (ЧЧ:ММ) на указанную дату"""
+    with sqlite3.connect(DATABASE) as conn:
+        # Ищем записи, которые начинаются с нужной даты "дд.мм в "
+        rows = conn.execute("SELECT date_time FROM appointments WHERE date_time LIKE ?", (f"{date_str} в %",)).fetchall()
+        # Извлекаем только время из строки "03.04 в 10:30" -> "10:30"
+        return [row[0].split(" в ")[1] for row in rows]
 
 def create_appointment(user_id, date_time_str):
     try:
