@@ -5,9 +5,10 @@ def main_menu(is_admin=False):
     kb = VkKeyboard(one_time=False)
     kb.add_button("Записаться на прием", color=VkKeyboardColor.PRIMARY)
     kb.add_line()
-    kb.add_button("Статус заказа", color=VkKeyboardColor.SECONDARY)
+    kb.add_button("Мои заказы", color=VkKeyboardColor.PRIMARY)
+    kb.add_button("Личный кабинет", color=VkKeyboardColor.SECONDARY)
+    kb.add_line()
     kb.add_button("О салоне", color=VkKeyboardColor.SECONDARY)
-    # Если зашел админ, добавляем кнопку панели
     if is_admin:
         kb.add_line()
         kb.add_button("Админ-панель", color=VkKeyboardColor.NEGATIVE)
@@ -21,51 +22,32 @@ def admin_menu():
     kb.add_button("В главное меню", color=VkKeyboardColor.SECONDARY)
     return kb.get_keyboard()
 
-def date_selection():
+def date_selection(page=0):
     kb = VkKeyboard(one_time=True)
-    # Выводим ближайшие 9 дней (сетка 3х3)
-    for i in range(9):
+    start_idx = page * 12
+    for i in range(start_idx, start_idx + 12):
         day = (datetime.now() + timedelta(days=i)).strftime("%d.%m")
         kb.add_button(f"Дата: {day}", color=VkKeyboardColor.PRIMARY)
-        # Каждые 3 кнопки делаем новую строку
-        if (i + 1) % 3 == 0 and i < 8:
-            kb.add_line()
+        if (i + 1) % 3 == 0: kb.add_line()
     
+    if page == 0: kb.add_button("Следующие даты ➡️", color=VkKeyboardColor.SECONDARY)
+    else: kb.add_button("⬅️ Предыдущие даты", color=VkKeyboardColor.SECONDARY)
     kb.add_line()
     kb.add_button("Назад", color=VkKeyboardColor.NEGATIVE)
     return kb.get_keyboard()
 
-def time_slots(booked_times):
+def time_slots(booked):
     kb = VkKeyboard(one_time=True)
-    
-    # Определяем диапазон времени
-    start_time = datetime.strptime("10:00", "%H:%M")
-    end_time = datetime.strptime("19:30", "%H:%M")
-    current = start_time
-    
+    curr, end = datetime.strptime("10:00", "%H:%M"), datetime.strptime("19:30", "%H:%M")
     count = 0
-    while current <= end_time:
-        t_str = current.strftime("%H:%M")
-        
-        # Проверяем, занято ли время (booked_times приходит из БД)
-        if t_str in booked_times:
-            # Белая кнопка для занятого времени
-            kb.add_button(f"({t_str})", color=VkKeyboardColor.SECONDARY)
-        else:
-            # Синяя кнопка для свободного времени
-            kb.add_button(t_str, color=VkKeyboardColor.PRIMARY)
-        
+    while curr <= end:
+        t = curr.strftime("%H:%M")
+        color = VkKeyboardColor.SECONDARY if t in booked else VkKeyboardColor.PRIMARY
+        label = f"({t})" if t in booked else t
+        kb.add_button(label, color=color)
         count += 1
-        
-        # Переносим строку через каждые 4 кнопки
-        if count % 4 == 0 and current < end_time:
-            kb.add_line()
-            
-        # ИСПРАВЛЕНО: аргумент 'minutes' вместо 'minutes_delta'
-        current += timedelta(minutes=30)
-    
-    # Кнопку "Назад" выносим на отдельную строку в самом конце
+        if count % 4 == 0 and curr < end: kb.add_line()
+        curr += timedelta(minutes=30)
     kb.add_line()
     kb.add_button("Назад", color=VkKeyboardColor.NEGATIVE)
-    
     return kb.get_keyboard()
