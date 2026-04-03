@@ -11,20 +11,15 @@ def main_menu():
 
 def time_slots():
     kb = VkKeyboard(one_time=True)
-    # Интервалы с 10:00 до 19:30 каждые 30 мин
-    start = datetime.strptime("10:00", "%H:%M")
-    end = datetime.strptime("19:30", "%H:%M")
-    
+    start, end = datetime.strptime("10:00", "%H:%M"), datetime.strptime("19:30", "%H:%M")
     current = start
     count = 0
     while current <= end:
         time_str = current.strftime("%H:%M")
         kb.add_button(f"Запись на {time_str}", color=VkKeyboardColor.POSITIVE)
         count += 1
-        if count % 3 == 0 and current < end: 
-            kb.add_line()
+        if count % 3 == 0 and current < end: kb.add_line()
         current += timedelta(minutes=30)
-    
     kb.add_line()
     kb.add_button("Назад", color=VkKeyboardColor.NEGATIVE)
     return kb.get_keyboard()

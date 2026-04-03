@@ -2,73 +2,63 @@ import vk_api
 from vk_api.longpoll import VkLongPoll, VkEventType
 from vk_api.utils import get_random_id
 from config import TOKEN, ADMIN_ID
-import keyboards
-import database
+import keyboards, database
 
-# Инициализация
 database.init_db()
 vk_session = vk_api.VkApi(token=TOKEN)
 vk = vk_session.get_api()
 longpoll = VkLongPoll(vk_session)
 
 def send_msg(user_id, text, kb=None):
-    params = {
-        'user_id': user_id,
-        'message': text,
-        'random_id': get_random_id()
-    }
-    if kb:
-        params['keyboard'] = kb
-    vk.messages.send(**params)
+    vk.messages.send(user_id=user_id, message=text, random_id=get_random_id(), keyboard=kb)
 
-print("Бот Оптика Экспресс запущен и готов к работе!")
+print("Бот Оптика Экспресс запущен!")
 
 for event in longpoll.listen():
     if event.type == VkEventType.MESSAGE_NEW and event.to_me:
-        user_id = event.user_id
-        msg = event.text.strip()
+        user_id, msg = event.user_id, event.text.strip()
         msg_l = msg.lower()
-
-        # Регистрация в БД
         database.add_user(user_id)
 
-        # Логика команд
+        # 1. Навигация
         if msg_l in ["начать", "привет", "меню", "назад"]:
-            send_msg(user_id, "Оптика Экспресс приветствует вас! Выберите нужное действие в меню:", keyboards.main_menu())
+            send_msg(user_id, "Выберите действие в меню:", keyboards.main_menu())
 
         elif msg_l == "о салоне":
-            info = ("👓 Оптика Экспресс\n"
-                    "📍 Адрес: Санкт-Петербург, Измайловский пр., д. 7\n"
-                    "⏰ Время работы: Пн-Вс 10:00 - 20:00\n"
-                    "🚇 Метро: Технологический институт\n\n"
-                    "Мы предлагаем профессиональную проверку зрения и подбор очков.")
+            info = "👓 Оптика Экспресс\n📍 Измайловский пр., д. 7\n⏰ 10:00 - 20:00"
             send_msg(user_id, info, keyboards.main_menu())
 
+        # 2. Запись
         elif msg_l == "записаться на прием":
-            send_msg(user_id, "Выберите свободное время для записи на сегодня:", keyboards.time_slots())
+            send_msg(user_id, "Выберите время на сегодня:", keyboards.time_slots())
 
         elif "запись на" in msg_l:
-            time_val = msg_l.replace("запись на ", "").strip()
-            
+            time_val = msg_l.replace("запись на ", "")
             if database.create_appointment(user_id, time_val):
-                # Подтверждение клиенту
-                send_msg(user_id, f"✅ Вы записаны на {time_val}!\nАдрес: Измайловский пр., д. 7. Ждем вас!", keyboards.main_menu())
-                # Уведомление админу
-                try:
-                    admin_text = f"🔔 Новая запись!\nПользователь: ://vk.com{user_id}\nВремя: {time_val}"
-                    send_msg(ADMIN_ID, admin_text)
-                except Exception as e:
-                    print(f"Ошибка уведомления админа: {e}")
+                send_msg(user_id, f"✅ Вы записаны на {time_val}!", keyboards.main_menu())
+                if ADMIN_ID:
+                    send_msg(ADMIN_ID, f"🔔 Новая запись: ://vk.com{user_id} на {time_val}")
             else:
-                send_msg(user_id, f"❌ Время {time_val} уже занято другими клиентами. Выберите другое.", keyboards.time_slots())
+                send_msg(user_id, "❌ Это время уже занято.", keyboards.time_slots())
 
+        # 3. Статусы заказов
         elif msg_l == "статус заказа":
-            send_msg(user_id, "Для проверки статуса введите номер вашего заказа (только цифры):")
+            send_msg(user_id, "Введите номер вашего заказа (цифрами):")
 
-        # Если пришло сообщение, не попавшее в фильтры (например, номер заказа)
+        # Админ-команда: "заказ 1234 готов"
+        elif msg_l.startswith("заказ ") and user_id == ADMIN_ID:
+            try:
+                parts = msg.split() # ['заказ', '1234', 'готов']
+                database.update_order_status(parts[1], " ".join(parts[2:]))
+                send_msg(ADMIN_ID, f"✅ Статус заказа {parts[1]} обновлен.")
+            except:
+                send_msg(ADMIN_ID, "Ошибка! Формат: заказ [номер] [статус]")
+
+        # Поиск заказа по цифрам
         elif msg.isdigit():
-            # Здесь будет поиск заказа в БД (добавим в следующем шаге)
-            send_msg(user_id, f"Вы ввели номер заказа: {msg}. Поиск в базе пока настраивается...", keyboards.main_menu())
+            status = database.get_order_status(msg)
+            text = f"📦 Заказ №{msg}\nСтатус: {status}" if status else f"🔍 Заказ №{msg} не найден."
+            send_msg(user_id, text, keyboards.main_menu())
 
         else:
-            send_msg(user_id, "Извините, я не понимаю эту команду. Пожалуйста, воспользуйтесь кнопками меню.", keyboards.main_menu())
+            send_msg(user_id, "Используйте кнопки меню.", keyboards.main_menu())
