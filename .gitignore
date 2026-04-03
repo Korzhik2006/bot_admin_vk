@@ -1,0 +1,4 @@
+config.py
+optica.db
+__pycache__/
+venv/
