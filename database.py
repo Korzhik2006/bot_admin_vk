@@ -9,21 +9,21 @@ def init_db(main_admin_id):
         cursor.execute('CREATE TABLE IF NOT EXISTS appointments (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, date_time TEXT UNIQUE, reminded INTEGER DEFAULT 0)')
         cursor.execute('CREATE TABLE IF NOT EXISTS orders (order_id TEXT PRIMARY KEY, status TEXT, phone_link TEXT, user_id_link INTEGER)')
         cursor.execute('CREATE TABLE IF NOT EXISTS admins (user_id INTEGER PRIMARY KEY)')
-        
-        # Авто-миграция (добавление колонок без удаления базы)
         try: cursor.execute('ALTER TABLE users ADD COLUMN full_name TEXT')
-        except: pass
-        try: cursor.execute('ALTER TABLE users ADD COLUMN phone TEXT')
         except: pass
         try: cursor.execute('ALTER TABLE orders ADD COLUMN user_id_link INTEGER')
         except: pass
-        
         cursor.execute("INSERT OR IGNORE INTO admins (user_id) VALUES (?)", (main_admin_id,))
         conn.commit()
 
 def add_user(user_id, name):
     with sqlite3.connect(DATABASE) as conn:
-        conn.execute("INSERT OR IGNORE INTO users (user_id, full_name) VALUES (?, ?)", (user_id, name))
+        conn.execute("""
+            INSERT INTO users (user_id, full_name) VALUES(?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET full_name=excluded.full_name
+            WHERE full_name IS NULL OR full_name = 'Клиент'
+        """, (user_id, name))
+        conn.commit()
 
 def update_user_phone(uid, p):
     with sqlite3.connect(DATABASE) as conn: 
@@ -31,21 +31,18 @@ def update_user_phone(uid, p):
 
 def get_user_data(uid):
     with sqlite3.connect(DATABASE) as conn:
-        return conn.execute("SELECT full_name, phone FROM users WHERE user_id = ?", (uid,)).fetchone()
+        res = conn.execute("SELECT full_name, phone FROM users WHERE user_id = ?", (uid,)).fetchone()
+        return res if res else (None, None)
 
 def is_admin(user_id):
     with sqlite3.connect(DATABASE) as conn:
         res = conn.execute("SELECT user_id FROM admins WHERE user_id = ?", (user_id,)).fetchone()
         return res is not None
 
-def add_admin(user_id):
-    with sqlite3.connect(DATABASE) as conn:
-        conn.execute("INSERT OR IGNORE INTO admins (user_id) VALUES (?)", (user_id,))
-
 def get_booked_slots(date_str):
     with sqlite3.connect(DATABASE) as conn:
         rows = conn.execute("SELECT date_time FROM appointments WHERE date_time LIKE ?", (f"{date_str} в %",)).fetchall()
-        return [r[0].split(" в ")[1] for r in rows]
+        return [row[0].split(" в ")[1] for row in rows]
 
 def create_appointment(uid, dt):
     try:
@@ -80,6 +77,15 @@ def get_order_status(order_id):
     with sqlite3.connect(DATABASE) as conn:
         res = conn.execute("SELECT status FROM orders WHERE order_id = ?", (order_id,)).fetchone()
         return res[0] if res else None
+
+def get_all_appointments():
+    with sqlite3.connect(DATABASE) as conn:
+        return conn.execute("SELECT a.date_time, u.full_name FROM appointments a JOIN users u ON a.user_id = u.user_id ORDER BY a.date_time").fetchall()
+
+def get_all_orders():
+    with sqlite3.connect(DATABASE) as conn:
+        res = conn.execute("SELECT o.order_id, o.status, u.full_name FROM orders o LEFT JOIN users u ON o.user_id_link = u.user_id").fetchall()
+        return [(str(o), str(s) if s else "Без статуса", str(n) if n else "Неизвестен") for o, s, n in res]
 
 def set_user_last_date(user_id, d):
     with sqlite3.connect(DATABASE) as conn: 

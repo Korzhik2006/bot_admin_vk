@@ -11,13 +11,15 @@ vk = vk_session.get_api()
 longpoll = VkLongPoll(vk_session)
 
 def send_msg(uid, text, kb=None):
-    try: vk.messages.send(user_id=uid, message=text, random_id=get_random_id(), keyboard=kb)
-    except Exception as e: print(f"Ошибка связи: {e}")
+    params = {'user_id': uid, 'message': text, 'random_id': get_random_id()}
+    if kb: params['keyboard'] = kb
+    try: vk.messages.send(**params)
+    except: pass
 
 def get_name(uid):
     try:
-        u = vk.users.get(user_ids=uid)[0]
-        return f"{u['first_name']} {u['last_name']}"
+        u = vk.users.get(user_ids=uid)
+        return f"{u[0]['first_name']} {u[0]['last_name']}"
     except: return "Клиент"
 
 def check_reminders():
@@ -33,7 +35,7 @@ scheduler = BackgroundScheduler()
 scheduler.add_job(check_reminders, 'interval', minutes=1)
 scheduler.start()
 
-print("🚀 Оптика Экспресс v2.0 запущена!")
+print("🚀 Оптика Экспресс v2.3 запущена!")
 
 while True:
     try:
@@ -46,29 +48,27 @@ while True:
 
                 if msg_l in ["начать", "привет", "меню", "назад", "в главное меню"]:
                     send_msg(uid, f"Здравствуйте, {full_name}!", keyboards.main_menu(is_adm))
+                
+                elif msg_l == "админ-панель" and is_adm:
+                    send_msg(uid, "Управление салоном:", keyboards.admin_menu())
 
                 elif msg_l == "личный кабинет":
-                    data = database.get_user_data(uid)
-                    phone = data[1] if data[1] else "не привязан"
-                    send_msg(uid, f"👤 Профиль: {data[0]}\n📞 Тел: {phone}\n\nЧтобы привязать телефон, напишите:\nМой телефон 8XXXXXXXXXX")
+                    name_db, phone_db = database.get_user_data(uid)
+                    display_name = name_db if (name_db and name_db != "Клиент") else full_name
+                    display_phone = phone_db if phone_db else "не привязан"
+                    send_msg(uid, f"👤 Профиль: {display_name}\n📞 Тел: {display_phone}\n\nДля привязки напишите:\nМой телефон 8XXXXXXXXXX")
 
                 elif msg_l == "о салоне":
                     send_msg(uid, "👓 Оптика Экспресс\n📍 Измайловский пр., 7\n⏰ 10:00-20:00\n✅ Проверка зрения\n✅ Очки за час")
 
                 elif msg_l == "мои заказы":
                     orders = database.get_user_orders(uid)
-                    text = "📦 Ваши заказы:\n" + "\n".join([f"№{o}: {s}" for o, s in orders]) if orders else "Заказов не найдено."
+                    text = "📦 Ваши заказы:\n" + "\n".join([f"№{o}: {s}" for o, s in orders]) if orders else "Заказов нет."
                     send_msg(uid, text)
-
-                elif msg_l.startswith("мой телефон"):
-                    ph = re.sub(r"\D", "", msg)
-                    if len(ph) == 11:
-                        database.update_user_phone(uid, ph)
-                        send_msg(uid, f"✅ Телефон {ph} привязан!")
-                    else: send_msg(uid, "❌ Введите 11 цифр.")
 
                 elif msg_l == "записаться на прием" or msg_l == "⬅️ предыдущие даты":
                     send_msg(uid, "Выберите дату:", keyboards.date_selection(0))
+                
                 elif msg_l == "следующие даты ➡️":
                     send_msg(uid, "Выберите дату:", keyboards.date_selection(1))
 
@@ -82,25 +82,43 @@ while True:
                     if d and database.create_appointment(uid, f"{d} в {msg}"):
                         send_msg(uid, f"✅ Записано на {d} в {msg}!")
                         send_msg(ADMIN_ID, f"🔔 Запись: {d} в {msg} ({full_name})")
-                    else: send_msg(uid, "❌ Это время уже занято.")
+                    else: send_msg(uid, "❌ Занято.")
 
                 elif is_adm and msg_l.startswith("заказ "):
                     p = msg.split()
                     if len(p) >= 3:
-                        oid, status = p[1], p[2]
-                        phone = p[3] if len(p) > 3 else None
-                        target = database.update_order(oid, status, phone)
-                        send_msg(uid, f"✅ Заказ {oid} обновлен.")
+                        order_id = p[1]
+                        phone = p[-1] if p[-1].isdigit() and len(p[-1]) == 11 else None
+                        status = " ".join(p[2:-1]) if phone else " ".join(p[2:])
+                        target = database.update_order(order_id, status, phone)
+                        send_msg(uid, f"✅ Заказ №{order_id} обновлен.")
                         if "готов" in status.lower() and target:
-                            send_msg(target, f"👓 {get_name(target)}, ваш заказ №{oid} готов!")
+                            send_msg(target, f"👓 {get_name(target)}, ваш заказ №{order_id} готов к выдаче!")
+
+                elif is_adm and msg_l == "все заказы":
+                    orders = database.get_all_orders()
+                    res = "\n".join([f"📦 №{o} | {s} | Клиент: {n}" for o, s, n in orders]) if orders else "Заказов нет."
+                    send_msg(uid, f"📋 Список всех заказов:\n{res}")
+
+                elif is_adm and msg_l == "список записей":
+                    apps = database.get_all_appointments()
+                    res = "\n".join([f"• {dt}: {name}" for dt, name in apps]) if apps else "Записей нет."
+                    send_msg(uid, f"📅 Записи на прием:\n{res}")
+
+                elif msg_l.startswith("мой телефон"):
+                    ph = re.sub(r"\D", "", msg)
+                    if len(ph) == 11:
+                        database.update_user_phone(uid, ph)
+                        send_msg(uid, f"✅ Телефон {ph} привязан!")
+                    else: send_msg(uid, "❌ Введите 11 цифр.")
 
                 elif msg.isdigit():
                     st = database.get_order_status(msg)
                     send_msg(uid, f"Статус заказа №{msg}: {st}" if st else "Заказ не найден.")
 
                 else:
-                    send_msg(uid, "Извините, я не понял запрос. Воспользуйтесь меню:", keyboards.main_menu(is_adm))
+                    send_msg(uid, "Воспользуйтесь меню:", keyboards.main_menu(is_adm))
 
     except Exception as e:
-        print(f"⚠️ Сбой: {e}. Перезапуск...")
+        print(f"Ошибка: {e}")
         time.sleep(5)

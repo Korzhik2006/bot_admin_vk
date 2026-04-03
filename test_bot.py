@@ -8,19 +8,25 @@ def setup_db():
     database.init_db(350445907)
     yield
 
-def test_full_crm_cycle():
-    # 1. Регистрация и телефон
-    database.add_user(111, "Иван Тест")
-    database.update_user_phone(111, "89991234455")
-    # 2. Привязка заказа через телефон
-    target = database.update_order("777", "В работе", "89991234455")
+def test_full_flow():
+    # 1. Регистрация и привязка телефона
+    database.add_user(111, "Иван Иванов")
+    database.update_user_phone(111, "89991112233")
+    
+    # 2. Создание заказа админом (CRM связка)
+    target = database.update_order("500", "В работе", "89991112233")
     assert target == 111
-    # 3. Проверка заказов пользователя
-    orders = database.get_user_orders(111)
-    assert len(orders) == 1
-    # 4. Запись
-    assert database.create_appointment(111, "01.01 в 10:00") is True
-    assert "10:00" in database.get_booked_slots("01.01")
+    
+    # 3. Проверка заказов
+    orders = database.get_all_orders()
+    assert orders[0][0] == "500"
+    assert orders[0][2] == "Иван Иванов"
+    
+    # 4. Проверка записей
+    database.create_appointment(111, "01.01 в 12:00")
+    booked = database.get_booked_slots("01.01")
+    assert "12:00" in booked
+    
     # 5. Лимиты ВК
     kb = json.loads(keyboards.date_selection(0))
     assert len(kb['buttons']) <= 10

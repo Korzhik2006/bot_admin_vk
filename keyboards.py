@@ -14,14 +14,6 @@ def main_menu(is_admin=False):
         kb.add_button("Админ-панель", color=VkKeyboardColor.NEGATIVE)
     return kb.get_keyboard()
 
-def admin_menu():
-    kb = VkKeyboard(one_time=False)
-    kb.add_button("Список записей", color=VkKeyboardColor.PRIMARY)
-    kb.add_button("Все заказы", color=VkKeyboardColor.PRIMARY)
-    kb.add_line()
-    kb.add_button("В главное меню", color=VkKeyboardColor.SECONDARY)
-    return kb.get_keyboard()
-
 def date_selection(page=0):
     kb = VkKeyboard(one_time=True)
     start_idx = page * 12
@@ -29,7 +21,6 @@ def date_selection(page=0):
         day = (datetime.now() + timedelta(days=i)).strftime("%d.%m")
         kb.add_button(f"Дата: {day}", color=VkKeyboardColor.PRIMARY)
         if (i + 1) % 3 == 0: kb.add_line()
-    
     if page == 0: kb.add_button("Следующие даты ➡️", color=VkKeyboardColor.SECONDARY)
     else: kb.add_button("⬅️ Предыдущие даты", color=VkKeyboardColor.SECONDARY)
     kb.add_line()
@@ -50,4 +41,12 @@ def time_slots(booked):
         curr += timedelta(minutes=30)
     kb.add_line()
     kb.add_button("Назад", color=VkKeyboardColor.NEGATIVE)
+    return kb.get_keyboard()
+
+def admin_menu():
+    kb = VkKeyboard(one_time=False)
+    kb.add_button("Список записей", color=VkKeyboardColor.PRIMARY)
+    kb.add_button("Все заказы", color=VkKeyboardColor.PRIMARY)
+    kb.add_line()
+    kb.add_button("В главное меню", color=VkKeyboardColor.SECONDARY)
     return kb.get_keyboard()
