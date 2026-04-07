@@ -1,0 +1,45 @@
+name: Build Optica Bot for Windows
+
+on:
+  push:
+    branches:
+      - main # Запускать сборку при пуше в ветку main
+  workflow_dispatch: # Позволяет запускать сборку вручную из интерфейса GitHub
+
+jobs:
+  build:
+    runs-on: windows-latest # Использовать виртуальную машину Windows для сборки
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4 # Скачать твой код из репозитория
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.x' # Использовать последнюю версию Python 3 на Windows
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt # Установить все зависимости, включая PyInstaller
+
+    - name: Run PyInstaller
+      run: |
+        pyinstaller --onefile --windowed --name optica_bot main.py # Создать один EXE-файл без консоли
+      shell: bash # Использовать bash shell на Windows-раннере
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: OpticaBot-Windows-Release
+        path: dist/optica_bot.exe # Загрузить созданный EXE-файл
+
+    - name: Create GitHub Release (Optional, but recommended)
+      if: startsWith(github.ref, 'refs/tags/') # Запускать только при создании тега (релиза)
+      uses: softprops/action-gh-release@v1
+      with:
+        files: dist/optica_bot.exe # Прикрепить EXE-файл к релизу
+        prerelease: true # Если это предрелизная версия (можно убрать)
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Токен для создания релиза
