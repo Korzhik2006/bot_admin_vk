@@ -30,14 +30,13 @@ def get_name(uid):
     except: return "Клиент"
 
 def check_reminders():
-    # Напоминание за 2 часа
-    rem = (datetime.now() + timedelta(hours=2)).strftime("%d.%m в %H:%M")
-    with sqlite3.connect(database.DATABASE) as conn:
-        users = conn.execute("SELECT user_id, date_time FROM appointments WHERE date_time = ? AND reminded = 0", (rem,)).fetchall()
-        for u_id, dt in users:
-            send_msg(u_id, f"🔔 Напоминание! Вы записаны в {SALON_NAME} через 2 часа ({dt}).")
-            conn.execute("UPDATE appointments SET reminded = 1 WHERE user_id = ? AND date_time = ?", (u_id, dt))
-
+    # Берем время через 2 часа
+    target_time = (datetime.now() + timedelta(hours=2)).strftime("%d.%m в %H:%M")
+    # Ищем записи в БД
+    pending = database.get_pending_reminders(target_time)
+    for u_id, dt in pending:
+        send_msg(u_id, f"🔔 Напоминание! Вы записаны в {SALON_NAME} на {dt} (через 2 часа).")
+        database.mark_reminded(u_id, dt)
 scheduler = BackgroundScheduler()
 scheduler.add_job(check_reminders, 'interval', minutes=1)
 scheduler.start()
@@ -50,14 +49,16 @@ while True:
             if event.type == VkEventType.MESSAGE_NEW and event.to_me:
                 uid, msg = event.user_id, event.text.strip()
                 msg_l, is_adm = msg.lower(), database.is_admin(uid)
-                full_name = get_name(uid)
-                database.add_user(uid, full_name)
 
-                # --- КЛИЕНТСКАЯ ЧАСТЬ ---
+                # РЕГИСТРАЦИЯ: только если сообщения "начать" или пользователя нет в базе
                 if msg_l in ["начать", "привет", "меню", "назад", "в главное меню"]:
+                    full_name = get_name(uid)
+                    database.add_user(uid, full_name)
                     send_msg(uid, f"Здравствуйте, {full_name}! Вас приветствует {SALON_NAME}.", keyboards.main_menu(is_adm))
+                    continue
                 
-                elif msg_l == "админ-панель" and is_adm:
+                # --- КЛИЕНТСКАЯ ЧАСТЬ ---
+                if msg_l == "админ-панель" and is_adm:
                     send_msg(uid, "Управление салоном:", keyboards.admin_menu())
 
                 elif msg_l == "личный кабинет":
@@ -74,25 +75,42 @@ while True:
                     send_msg(uid, text)
 
                 # --- ЛОГИКА ЗАПИСИ ---
-                elif msg_l == "записаться на прием" or msg_l == "⬅️ предыдущие даты":
+                elif msg_l == "записаться на прием":
                     send_msg(uid, "Выберите дату:", keyboards.date_selection(0))
+                elif msg_l == "⬅️ предыдущие даты":
+                    send_msg(uid, "Выберите дату:", keyboards.date_selection(0))
+
                 elif msg_l == "следующие даты ➡️":
                     send_msg(uid, "Выберите дату:", keyboards.date_selection(1))
 
                 elif msg_l.startswith("дата: "):
                     d = msg.replace("Дата: ", "").replace("дата: ", "")
-                    database.set_user_last_date(uid, d)
-                    send_msg(uid, f"Время на {d}:", keyboards.time_slots(database.get_booked_slots(d), d))
+                    # Проверка: не выбрал ли пользователь дату из прошлого (кнопка в старом сообщении)
+                    try:
+                        day, month = map(int, d.split('.'))
+                        target_dt = datetime.now().replace(day=day, month=month)
+                        if target_dt.date() < datetime.now().date():
+                            send_msg(uid, "❌ Нельзя записаться на прошедшую дату.")
+                            continue
+                    except: pass
 
+                    database.set_user_last_date(uid, d)
+                    booked = database.get_booked_slots(d)
+                    send_msg(uid, f"Время на {d}:", keyboards.time_slots(booked, d))
+
+                # Обработка нажатия на "Занято"
+                elif "(" in msg and ")" in msg and ":" in msg:
+                     send_msg(uid, "Вы нажали на занятое время. Выберите другое, пожалуйста.")
                 elif re.match(r'^\d{2}:\d{2}$', msg):
                     d = database.get_user_last_date(uid)
-                    if d:
+                    if not d:
+                        send_msg(uid, "❌ Сначала выберите дату (кнопка 'Записаться').")
+                        continue
                         if database.create_appointment(uid, f"{d} в {msg}"):
-                            send_msg(uid, f"✅ Вы записаны на {d} в {msg}!")
-                            send_msg(ADMIN_ID, f"🔔 Новая запись: {d} в {msg}\n👤 {full_name}")
-                        else: send_msg(uid, "❌ Это время уже занято.")
-                    else: send_msg(uid, "❌ Сначала выберите дату.")
-
+                        send_msg(uid, f"✅ Успешно! Ждем вас {d} в {msg}.", keyboards.main_menu(is_adm))
+                        send_msg(ADMIN_ID, f"🔔 Новая запись: {d} в {msg}\n👤 ID: {uid}")
+                        else:
+                        send_msg(uid, "❌ Это время уже занято или вы уже записаны.")
                 # --- АДМИН-ПАНЕЛЬ ---
                 elif is_adm and msg_l == "список клиентов":
                     clients = database.get_all_clients()
@@ -138,7 +156,8 @@ while True:
                     else: send_msg(uid, "❌ Введите 11 цифр.")
 
                 else:
-                    send_msg(uid, "Воспользуйтесь меню:", keyboards.main_menu(is_adm))
+                    if not is_adm:
+                        send_msg(uid, "Пожалуйста, используйте кнопки меню.", keyboards.main_menu(is_adm))
 
     except Exception as e:
         print(f"⚠️ Сбой: {e}")

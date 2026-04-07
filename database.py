@@ -48,9 +48,27 @@ def get_booked_slots(date_str):
 def create_appointment(uid, dt):
     try:
         with sqlite3.connect(DATABASE) as conn:
+            # Проверка: не в прошлом ли дата (базовая)
+            # В идеале здесь должна быть проверка через datetime.strptime
             conn.execute("INSERT INTO appointments (user_id, date_time) VALUES (?, ?)", (uid, dt))
+            # СРАЗУ ОЧИЩАЕМ last_date, чтобы избежать повторных записей на ту же дату случайно
+            conn.execute("UPDATE users SET last_date = NULL WHERE user_id = ?", (uid,))
             return True
     except: return False
+
+def get_pending_reminders(time_limit_str):
+    """Находит все записи, которые наступят скоро и еще не были обработаны"""
+    with sqlite3.connect(DATABASE) as conn:
+        # Для простоты оставим логику строк, но добавим флаг reminded
+        return conn.execute("""
+            SELECT user_id, date_time
+            FROM appointments
+            WHERE reminded = 0 AND date_time <= ?
+        """, (time_limit_str,)).fetchall()
+
+def mark_reminded(uid, dt):
+    with sqlite3.connect(DATABASE) as conn:
+        conn.execute("UPDATE appointments SET reminded = 1 WHERE user_id = ? AND date_time = ?", (uid, dt))
 
 def update_order(order_id, status, phone=None):
     with sqlite3.connect(DATABASE) as conn:

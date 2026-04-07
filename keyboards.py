@@ -17,13 +17,19 @@ def main_menu(is_admin=False):
 def date_selection(page=0):
     kb = VkKeyboard(one_time=True)
     start_idx = page * 12
+    # Добавим ограничение, чтобы не предлагать даты слишком далеко в будущем
     for i in range(start_idx, start_idx + 12):
-        day = (datetime.now() + timedelta(days=i)).strftime("%d.%m")
-        kb.add_button(f"Дата: {day}", color=VkKeyboardColor.PRIMARY)
+        day_dt = datetime.now() + timedelta(days=i)
+        day_str = day_dt.strftime("%d.%m")
+        kb.add_button(f"Дата: {day_str}", color=VkKeyboardColor.PRIMARY)
         if (i + 1) % 3 == 0: kb.add_line()
     
-    if page == 0: kb.add_button("Следующие даты ➡️", color=VkKeyboardColor.SECONDARY)
-    else: kb.add_button("⬅️ Предыдущие даты", color=VkKeyboardColor.SECONDARY)
+    kb.add_line()
+    # Улучшенная навигация
+    if page > 0:
+        kb.add_button("⬅️ Предыдущие даты", color=VkKeyboardColor.SECONDARY)
+    if page < 2: # Ограничим выбор 3 страницами (~месяц)
+        kb.add_button("Следующие даты ➡️", color=VkKeyboardColor.SECONDARY)
     kb.add_line()
     kb.add_button("Назад", color=VkKeyboardColor.NEGATIVE)
     return kb.get_keyboard()
@@ -33,21 +39,23 @@ def time_slots(booked, selected_date_str):
     curr = datetime.strptime("10:00", "%H:%M")
     end = datetime.strptime("19:30", "%H:%M")
     now = datetime.now()
-    
-    # Проверка: выбрана ли сегодняшняя дата
+
     is_today = selected_date_str == now.strftime("%d.%m")
     
     count = 0
     while curr <= end:
         t_str = curr.strftime("%H:%M")
         is_booked = t_str in booked
-        is_past = is_today and curr.time() < now.time()
-        
-        # Показываем только будущее время
+        # Добавляем 15 минут запаса, чтобы нельзя было записаться на "сейчас"
+        is_past = is_today and (curr.hour < now.hour or (curr.hour == now.hour and curr.minute <= now.minute + 15))
+
         if not is_past:
-            color = VkKeyboardColor.SECONDARY if is_booked else VkKeyboardColor.PRIMARY
-            label = f"({t_str})" if is_booked else t_str
-            kb.add_button(label, color=color)
+            if is_booked:
+                # Занятое время делаем NEGATIVE (красным), чтобы визуально отличалось
+                kb.add_button(f"Занято ({t_str})", color=VkKeyboardColor.NEGATIVE)
+            else:
+                kb.add_button(t_str, color=VkKeyboardColor.PRIMARY)
+
             count += 1
             if count % 4 == 0: kb.add_line()
             
