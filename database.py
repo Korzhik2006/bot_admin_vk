@@ -9,6 +9,7 @@ def init_db(main_admin_id):
         cursor.execute('CREATE TABLE IF NOT EXISTS appointments (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, date_time TEXT UNIQUE, reminded INTEGER DEFAULT 0)')
         cursor.execute('CREATE TABLE IF NOT EXISTS orders (order_id TEXT PRIMARY KEY, status TEXT, phone_link TEXT, user_id_link INTEGER)')
         cursor.execute('CREATE TABLE IF NOT EXISTS admins (user_id INTEGER PRIMARY KEY)')
+        # Авто-миграции
         try: cursor.execute('ALTER TABLE users ADD COLUMN full_name TEXT')
         except: pass
         try: cursor.execute('ALTER TABLE orders ADD COLUMN user_id_link INTEGER')
@@ -51,11 +52,6 @@ def create_appointment(uid, dt):
             return True
     except: return False
 
-def delete_appointment(dt):
-    with sqlite3.connect(DATABASE) as conn:
-        cur = conn.execute("DELETE FROM appointments WHERE date_time = ?", (dt,))
-        return cur.rowcount > 0
-
 def update_order(order_id, status, phone=None):
     with sqlite3.connect(DATABASE) as conn:
         target_uid = None
@@ -86,6 +82,26 @@ def get_all_orders():
     with sqlite3.connect(DATABASE) as conn:
         res = conn.execute("SELECT o.order_id, o.status, u.full_name FROM orders o LEFT JOIN users u ON o.user_id_link = u.user_id").fetchall()
         return [(str(o), str(s) if s else "Без статуса", str(n) if n else "Неизвестен") for o, s, n in res]
+
+# --- НОВЫЕ ФУНКЦИИ ДЛЯ АДМИНКИ ---
+def get_all_clients():
+    with sqlite3.connect(DATABASE) as conn:
+        return conn.execute("""
+            SELECT u.user_id, u.full_name, u.phone, MAX(a.date_time)
+            FROM users u
+            LEFT JOIN appointments a ON u.user_id = a.user_id
+            GROUP BY u.user_id ORDER BY u.full_name
+        """).fetchall()
+
+def get_client_full_card(identifier):
+    with sqlite3.connect(DATABASE) as conn:
+        user = conn.execute("SELECT user_id, full_name, phone FROM users WHERE user_id = ? OR phone = ?", 
+                            (identifier, identifier)).fetchone()
+        if not user: return None
+        uid = user[0]
+        apps = conn.execute("SELECT date_time FROM appointments WHERE user_id = ? ORDER BY id DESC LIMIT 5", (uid,)).fetchall()
+        orders = conn.execute("SELECT order_id, status FROM orders WHERE user_id_link = ?", (uid,)).fetchall()
+        return {"profile": user, "apps": apps, "orders": orders}
 
 def set_user_last_date(user_id, d):
     with sqlite3.connect(DATABASE) as conn: 
