@@ -1,4 +1,5 @@
-import sqlite3
+import sqlite3, re # Добавил re для нормализации телефона
+from datetime import datetime, timedelta # Хотя timedelta здесь не используется, но для полноты
 
 DATABASE = 'optica.db'
 
@@ -48,22 +49,20 @@ def get_booked_slots(date_str):
 def create_appointment(uid, dt):
     try:
         with sqlite3.connect(DATABASE) as conn:
-            # Проверка: не в прошлом ли дата (базовая)
-            # В идеале здесь должна быть проверка через datetime.strptime
             conn.execute("INSERT INTO appointments (user_id, date_time) VALUES (?, ?)", (uid, dt))
-            # СРАЗУ ОЧИЩАЕМ last_date, чтобы избежать повторных записей на ту же дату случайно
             conn.execute("UPDATE users SET last_date = NULL WHERE user_id = ?", (uid,))
             return True
-    except: return False
+    except sqlite3.IntegrityError:
+        return False
+    except:
+        return False
 
 def get_pending_reminders(time_limit_str):
-    """Находит все записи, которые наступят скоро и еще не были обработаны"""
     with sqlite3.connect(DATABASE) as conn:
-        # Для простоты оставим логику строк, но добавим флаг reminded
         return conn.execute("""
             SELECT user_id, date_time
             FROM appointments
-            WHERE reminded = 0 AND date_time <= ?
+            WHERE reminded = 0 AND date_time = ?
         """, (time_limit_str,)).fetchall()
 
 def mark_reminded(uid, dt):
@@ -73,19 +72,40 @@ def mark_reminded(uid, dt):
 def update_order(order_id, status, phone=None):
     with sqlite3.connect(DATABASE) as conn:
         target_uid = None
+        normalized_phone = None
+
         if phone:
-            res = conn.execute("SELECT user_id FROM users WHERE phone = ?", (phone,)).fetchone()
-            if res: target_uid = res[0]
+            normalized_phone = re.sub(r"\D", "", phone) # Нормализуем входящий телефон
+            if len(normalized_phone) == 11 and (normalized_phone.startswith('7') or normalized_phone.startswith('8')):
+                res = conn.execute("SELECT user_id FROM users WHERE phone = ?", (normalized_phone,)).fetchone()
+                if res:
+                    target_uid = res[0] # Если нашли пользователя по телефону, привязываем
+            
+        # Вставляем/обновляем заказ. phone_link будет либо нормализованным телефоном, либо None.
+        # user_id_link будет либо найденным UID, либо None.
         conn.execute("INSERT OR REPLACE INTO orders (order_id, status, phone_link, user_id_link) VALUES (?, ?, ?, ?)", 
-                     (order_id, status, phone, target_uid))
-        return target_uid
+                     (order_id, status, normalized_phone, target_uid))
+        return target_uid # Возвращаем найденный UID для уведомлений
 
 def get_user_orders(user_id):
     with sqlite3.connect(DATABASE) as conn:
-        return conn.execute("""
-            SELECT order_id, status FROM orders 
-            WHERE user_id_link = ? OR phone_link = (SELECT phone FROM users WHERE user_id = ?)
-        """, (user_id, user_id)).fetchall()
+        # Получаем номер телефона пользователя, если он его привязал
+        user_phone_res = conn.execute("SELECT phone FROM users WHERE user_id = ?", (user_id,)).fetchone()
+        user_phone = user_phone_res[0] if user_phone_res else None
+
+        # Строим запрос для поиска заказов
+        query_parts = ["user_id_link = ?"] # Всегда ищем по прямой ссылке на user_id
+        query_params = [user_id]
+
+        if user_phone:
+            # Если у пользователя есть привязанный телефон, ищем также по phone_link
+            query_parts.append("phone_link = ?")
+            query_params.append(user_phone)
+        
+        # Объединяем части запроса через OR
+        final_query = "SELECT order_id, status FROM orders WHERE " + " OR ".join(query_parts)
+        
+        return conn.execute(final_query, tuple(query_params)).fetchall()
 
 def get_order_status(order_id):
     with sqlite3.connect(DATABASE) as conn:
@@ -129,3 +149,4 @@ def get_user_last_date(user_id):
     with sqlite3.connect(DATABASE) as conn:
         res = conn.execute("SELECT last_date FROM users WHERE user_id = ?", (user_id,)).fetchone()
         return res[0] if res else None
+
