@@ -1,0 +1,42 @@
+name: Build Optica Bot for Windows
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.x'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+      shell: bash
+
+    - name: Run PyInstaller
+      run: |
+        pyinstaller --onefile --windowed --name optica_bot \
+        --hidden-import database \
+        --hidden-import keyboards \
+        --hidden-import setup_wizard \
+        --collect-all vk_api \
+        main.py
+      shell: bash
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: OpticaBot-Windows-Release
+        path: dist/optica_bot.exe
