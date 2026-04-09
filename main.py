@@ -17,7 +17,7 @@ SALON_NAME = os.getenv('SALON_NAME', 'Мой Салон')
 
 # Проверка, что важные данные на месте
 if not TOKEN or not ADMIN_ID:
-    print("Ошибка: VK_TOKEN или ADMIN_ID не установлены в переменных окружения!")
+    print("Ошибка: TOKEN или ADMIN_ID не установлены в переменных окружения!")
     exit(1)
 
 # Инициализация
