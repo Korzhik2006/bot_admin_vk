@@ -49,7 +49,7 @@ jobs:
             docker run -d \
               --name vk_bot_container \
               --restart always \
-              -e VK_TOKEN="$TOKEN" \
+              -e TOKEN="$TOKEN" \
               -e ADMIN_ID="$ADMIN_ID" \
               -e SALON_NAME="$SALON_NAME" \
               -v ~/bot_admin_vk/optica.db:/app/optica.db \
