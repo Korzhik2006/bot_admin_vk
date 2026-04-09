@@ -1,5 +1,5 @@
 # 1. Берем официальный легкий образ Python
-FROM python:3.10-slim
+FROM python:3.12-slim
 
 # 2. Устанавливаем рабочую папку внутри контейнера
 WORKDIR /app

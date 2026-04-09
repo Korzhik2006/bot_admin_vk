@@ -1,0 +1,47 @@
+name: Deploy VK Bot
+
+on:
+  push:
+    branches: [ master ] # или main, проверь название своей ветки
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Deploy to Server via SSH
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            # Переходим в папку проекта на сервере (создай её заранее)
+            mkdir -p ~/bot_admin_vk
+            cd ~/bot_admin_vk
+            
+            # Обновляем код (если проект уже был, иначе сделай git clone)
+            # Для первого раза лучше вручную склонировать проект на сервер
+            git pull origin master || true 
+
+            # Создаем .env из секретов GitHub
+            echo "VK_TOKEN=${{ secrets.VK_TOKEN }}" > .env
+            echo "ADMIN_ID=${{ secrets.ADMIN_ID }}" >> .env
+            echo "SALON_NAME='${{ secrets.SALON_NAME }}'" >> .env
+
+            # Собираем и запускаем контейнер
+            docker build -t vk_bot_image .
+            
+            # Останавливаем старый контейнер, если он есть
+            docker stop vk_bot_container || true
+            docker rm vk_bot_container || true
+            
+            # Запуск с прокидыванием базы данных (Volume)
+            docker run -d \
+              --name vk_bot_container \
+              --restart always \
+              --env-file .env \
+              -v ~/bot_admin_vk/optica.db:/app/optica.db \
+              vk_bot_image
