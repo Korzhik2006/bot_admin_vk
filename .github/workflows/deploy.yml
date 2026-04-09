@@ -2,7 +2,7 @@ name: Deploy VK Bot
 
 on:
   push:
-    branches: [ master ] # или main, проверь название своей ветки
+    branches: [ master ]
 
 jobs:
   deploy:
@@ -18,30 +18,27 @@ jobs:
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_KEY }}
           script: |
-            # Переходим в папку проекта на сервере (создай её заранее)
-            mkdir -p ~/bot_admin_vk
-            cd ~/bot_admin_vk
+            if [ ! -d "~/bot_admin_vk/.git" ]; then
+              rm -rf ~/bot_admin_vk
+              git clone https://github.com{{ github.repository }}.git ~/bot_admin_vk
+            fi
             
-            # Обновляем код (если проект уже был, иначе сделай git clone)
-            # Для первого раза лучше вручную склонировать проект на сервер
-            git pull origin master || true 
+            cd ~/bot_admin_vk
+            git fetch origin master
+            git reset --hard origin master
+            
+            touch optica.db
 
-            # Создаем .env из секретов GitHub
-            echo "VK_TOKEN=${{ secrets.VK_TOKEN }}" > .env
-            echo "ADMIN_ID=${{ secrets.ADMIN_ID }}" >> .env
-            echo "SALON_NAME='${{ secrets.SALON_NAME }}'" >> .env
-
-            # Собираем и запускаем контейнер
             docker build -t vk_bot_image .
             
-            # Останавливаем старый контейнер, если он есть
             docker stop vk_bot_container || true
             docker rm vk_bot_container || true
             
-            # Запуск с прокидыванием базы данных (Volume)
             docker run -d \
               --name vk_bot_container \
               --restart always \
-              --env-file .env \
+              -e TOKEN="${{ secrets.TOKEN }}" \
+              -e ADMIN_ID="${{ secrets.ADMIN_ID }}" \
+              -e SALON_NAME="${{ secrets.SALON_NAME }}" \
               -v ~/bot_admin_vk/optica.db:/app/optica.db \
               vk_bot_image
