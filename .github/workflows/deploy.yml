@@ -17,45 +17,45 @@ jobs:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_KEY }}
-          # 1. Список переменных, которые SSH-планшет "прокинет" на сервер
+          # Прокидываем переменные из блока env (ниже) в скрипт
           envs: TOKEN, ADMIN_ID, SALON_NAME
           script: |
-            # Заходим в папку или клонируем, если её нет
-            if [ ! -d "~/bot_admin_vk/.git" ]; then
-              rm -rf ~/bot_admin_vk
-              git clone https://github.com{{ github.repository }}.git ~/bot_admin_vk
+            # 1. Подготовка папки проекта
+            if [ ! -d "$HOME/bot_admin_vk/.git" ]; then
+              rm -rf "$HOME/bot_admin_vk"
+              git clone https://github.com{{ github.repository }}.git "$HOME/bot_admin_vk"
             fi
             
-            cd ~/bot_admin_vk
+            cd "$HOME/bot_admin_vk"
             git fetch origin master
             git reset --hard origin master
             
-            # Исправляем проблему с базой данных (файл, а не папка)
+            # 2. Жёсткое исправление проблемы с sqlite3 (убиваем папки, создаем файл)
             if [ -d "optica.db" ]; then
               rm -rf optica.db
             fi
             touch optica.db
             chmod 666 optica.db
 
-            # Собираем новый образ
+            # 3. Сборка образа
             docker build -t vk_bot_image .
             
-            # Удаляем старый контейнер, если он есть
+            # 4. Перезапуск контейнера
             docker stop vk_bot_container || true
             docker rm vk_bot_container || true
             
-            # Запускаем контейнер. 
-            # ВАЖНО: используем $TOKEN (из envs), а не ${{ secrets.TOKEN }} напрямую
+            # 5. Запуск с монтированием базы по полному пути
+            # Используем только TOKEN, как ты и просил
             docker run -d \
               --name vk_bot_container \
               --restart always \
               -e TOKEN="$TOKEN" \
               -e ADMIN_ID="$ADMIN_ID" \
               -e SALON_NAME="$SALON_NAME" \
-              -v ~/bot_admin_vk/optica.db:/app/optica.db \
+              -v "$HOME/bot_admin_vk/optica.db:/app/optica.db" \
               vk_bot_image
 
-        # 2. Здесь мы сопоставляем Секреты Гитхаба с переменными окружения Action
+        # Сопоставляем секреты GitHub с переменными окружения
         env:
           TOKEN: ${{ secrets.TOKEN }}
           ADMIN_ID: ${{ secrets.ADMIN_ID }}
