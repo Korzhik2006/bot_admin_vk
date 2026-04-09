@@ -7,7 +7,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 import database, keyboards
 
-load_dotenv()
+#load_dotenv()
 
 # Вместо import config используем os.getenv
 # Это позволит брать данные из Docker или системы
