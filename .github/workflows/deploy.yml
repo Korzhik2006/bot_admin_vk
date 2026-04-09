@@ -18,6 +18,7 @@ jobs:
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_KEY }}
           script: |
+            # 1. Заходим в папку или клонируем, если её нет
             if [ ! -d "~/bot_admin_vk/.git" ]; then
               rm -rf ~/bot_admin_vk
               git clone https://github.com{{ github.repository }}.git ~/bot_admin_vk
@@ -27,17 +28,25 @@ jobs:
             git fetch origin master
             git reset --hard origin master
             
+            # 2. Исправляем проблему с базой данных (удаляем папку, создаем файл)
+            if [ -d "optica.db" ]; then
+              rm -rf optica.db
+            fi
             touch optica.db
+            chmod 666 optica.db
 
+            # 3. Собираем новый образ
             docker build -t vk_bot_image .
             
+            # 4. Удаляем старый контейнер
             docker stop vk_bot_container || true
             docker rm vk_bot_container || true
             
+            # 5. Запускаем с правильными именами переменных для твоего кода
             docker run -d \
               --name vk_bot_container \
               --restart always \
-              -e TOKEN="${{ secrets.TOKEN }}" \
+              -e VK_TOKEN="${{ secrets.TOKEN }}" \
               -e ADMIN_ID="${{ secrets.ADMIN_ID }}" \
               -e SALON_NAME="${{ secrets.SALON_NAME }}" \
               -v ~/bot_admin_vk/optica.db:/app/optica.db \
