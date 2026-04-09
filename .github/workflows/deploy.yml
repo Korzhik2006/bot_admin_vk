@@ -17,8 +17,10 @@ jobs:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_KEY }}
+          # 1. Список переменных, которые SSH-планшет "прокинет" на сервер
+          envs: TOKEN, ADMIN_ID, SALON_NAME
           script: |
-            # 1. Заходим в папку или клонируем, если её нет
+            # Заходим в папку или клонируем, если её нет
             if [ ! -d "~/bot_admin_vk/.git" ]; then
               rm -rf ~/bot_admin_vk
               git clone https://github.com{{ github.repository }}.git ~/bot_admin_vk
@@ -28,26 +30,33 @@ jobs:
             git fetch origin master
             git reset --hard origin master
             
-            # 2. Исправляем проблему с базой данных (удаляем папку, создаем файл)
+            # Исправляем проблему с базой данных (файл, а не папка)
             if [ -d "optica.db" ]; then
               rm -rf optica.db
             fi
             touch optica.db
             chmod 666 optica.db
 
-            # 3. Собираем новый образ
+            # Собираем новый образ
             docker build -t vk_bot_image .
             
-            # 4. Удаляем старый контейнер
+            # Удаляем старый контейнер, если он есть
             docker stop vk_bot_container || true
             docker rm vk_bot_container || true
             
-            # 5. Запускаем с правильными именами переменных для твоего кода
+            # Запускаем контейнер. 
+            # ВАЖНО: используем $TOKEN (из envs), а не ${{ secrets.TOKEN }} напрямую
             docker run -d \
               --name vk_bot_container \
               --restart always \
-              -e VK_TOKEN="${{ secrets.TOKEN }}" \
-              -e ADMIN_ID="${{ secrets.ADMIN_ID }}" \
-              -e SALON_NAME="${{ secrets.SALON_NAME }}" \
+              -e VK_TOKEN="$TOKEN" \
+              -e ADMIN_ID="$ADMIN_ID" \
+              -e SALON_NAME="$SALON_NAME" \
               -v ~/bot_admin_vk/optica.db:/app/optica.db \
               vk_bot_image
+
+        # 2. Здесь мы сопоставляем Секреты Гитхаба с переменными окружения Action
+        env:
+          TOKEN: ${{ secrets.TOKEN }}
+          ADMIN_ID: ${{ secrets.ADMIN_ID }}
+          SALON_NAME: ${{ secrets.SALON_NAME }}
