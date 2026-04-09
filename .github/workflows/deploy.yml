@@ -17,10 +17,8 @@ jobs:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_KEY }}
-          # Прокидываем переменные из блока env (ниже) в скрипт
           envs: TOKEN, ADMIN_ID, SALON_NAME
           script: |
-            # 1. Подготовка папки проекта
             if [ ! -d "$HOME/bot_admin_vk/.git" ]; then
               rm -rf "$HOME/bot_admin_vk"
               git clone https://github.com{{ github.repository }}.git "$HOME/bot_admin_vk"
@@ -30,32 +28,28 @@ jobs:
             git fetch origin master
             git reset --hard origin master
             
-            # 2. Жёсткое исправление проблемы с sqlite3 (убиваем папки, создаем файл)
-            if [ -d "optica.db" ]; then
-              rm -rf optica.db
-            fi
-            touch optica.db
-            chmod 666 optica.db
+            # 1. СОЗДАЕМ ОТДЕЛЬНУЮ ПАПКУ ДЛЯ БАЗЫ И ДАЕМ ПРАВА
+            # Это исключит ошибку "unable to open database", так как SQLite сможет создавать lock-файлы
+            mkdir -p data
+            touch data/optica.db
+            chmod -R 777 data  # Даем полные права на папку и файл внутри
 
-            # 3. Сборка образа
             docker build -t vk_bot_image .
             
-            # 4. Перезапуск контейнера
             docker stop vk_bot_container || true
             docker rm vk_bot_container || true
             
-            # 5. Запуск с монтированием базы по полному пути
-            # Используем только TOKEN, как ты и просил
+            # 2. МОНТИРУЕМ ПАПКУ ЦЕЛИКОМ
+            # Внутри контейнера файл будет доступен по пути /app/data/optica.db
             docker run -d \
               --name vk_bot_container \
               --restart always \
               -e TOKEN="$TOKEN" \
               -e ADMIN_ID="$ADMIN_ID" \
               -e SALON_NAME="$SALON_NAME" \
-              -v "$HOME/bot_admin_vk/optica.db:/app/optica.db" \
+              -v "$HOME/bot_admin_vk/data:/app/data" \
               vk_bot_image
 
-        # Сопоставляем секреты GitHub с переменными окружения
         env:
           TOKEN: ${{ secrets.TOKEN }}
           ADMIN_ID: ${{ secrets.ADMIN_ID }}
